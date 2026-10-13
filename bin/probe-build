@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# 記事リポジトリ (親) の pages.json から一覧ページを作り、$1 に出す。
+# 親の場所は、このリポジトリが submodule として入っているなら git から得る。
+set -euo pipefail
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+CORE="$(cd "$(dirname "$SELF")/.." && pwd)"
+OUT="${1:?usage: probe-build <outdir>}"
+CONTENT="$(git -C "$CORE" rev-parse --show-superproject-working-tree)"
+[ -n "$CONTENT" ] || { echo "probe-build: superproject が見つかりません (submodule として入っていない)" >&2; exit 1; }
+command -v jq >/dev/null || { echo "probe-build: jq が要ります" >&2; exit 1; }
+echo "probe-build: core=$CORE ($(git -C "$CORE" rev-parse --short HEAD)) content=$CONTENT"
+mkdir -p "$OUT/_probe"
+cp "$CORE/assets/probe.css" "$OUT/_probe/"
+{
+  echo '<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="/_probe/probe.css"><title>probe</title>'
+  echo "<h1>probe</h1><p>core: $(git -C "$CORE" rev-parse HEAD)</p><p>built: $(date -u +%FT%TZ)</p><ul>"
+  jq -r 'to_entries[] | "<li><a href=\"/\(.key)/\">\(.key)</a> - \(.value.desc)</li>"' "$CONTENT/pages.json"
+  echo '</ul>'
+} >"$OUT/index.html"
+for slug in $(jq -r 'keys[]' "$CONTENT/pages.json"); do
+  mkdir -p "$OUT/$slug"
+  cp "$CONTENT/pages/$slug/_page.html" "$OUT/$slug/index.html"
+done
+echo "probe-build: wrote $OUT"
